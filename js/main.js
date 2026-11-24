@@ -2,61 +2,72 @@
   var d = document;
   var WA = '5549998030915';
 
-  /* ---------- hero "salão de retratos": molduras douradas na parede adamascada do estúdio.
-     Em cada moldura a peça se forma do preto ao cinza (retrato.js). WebGL no PC, MP4 no celular em pé ---------- */
+  /* ---------- hero "galeria" (modelo Veríssimo) na parede adamascada do estúdio: as peças dele em quadros; cada uma cobre a anterior
+     em tinta, um quadro depois do outro. WebGL no PC, MP4 no celular em pé ---------- */
   var reduz = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var hero = d.querySelector('.hero'), centro = d.querySelector('.q-centro'), V = '?v=1', NH = 5;
+  var hero = d.querySelector('.gal'), cena = d.querySelector('.gal-cena'), V = '?v=2', INTRO = 2.4, orn = new Image();
+  orn.src = 'img/orn/rosa.webp' + V;
+  var parede = new Image(); parede.src = 'img/hero/parede.webp';
   var baixa = function () { return innerHeight <= 520 && innerWidth > innerHeight; };
   var celPe = function () { return innerWidth <= 860 && !baixa(); };
-  function estatico() { centro.classList.remove('vd-modo'); centro.classList.add('est'); }
-  function iniciaGL() {
-    if (!window.Retrato || !d.createElement('canvas').getContext('webgl')) return false;
-    var imgs = [], faltam = NH, falhou = false;
-    for (var i = 0; i < NH; i++) {
-      var im = new Image(); im.decoding = 'async'; im.src = 'img/hero/h' + i + '.webp' + V; imgs.push(im);
-      im.onload = function () { if (!--faltam) pronto(); };
-      im.onerror = function () { if (!falhou) { falhou = true; iniciaVideo(); } };
-    }
+  function estatico() { cena.classList.add('est'); }
+  function iniciaGL(celular) {
+    if (!window.galeria || !window.GALERIA) return false;
+    if (!d.createElement('canvas').getContext('webgl')) return false;
+    var cv = d.querySelector('.g-gl'), imgs = {}, faltam = 0, G = null, falhou = false;
+    var lay = celular ? 'cel' : baixa() ? 'baixa' : 'pc', nomes = {};
+    window.GALERIA[lay].forEach(function (q) { q.arts.forEach(function (n) { nomes[n] = 1; }); });
     function pronto() {
-      if (falhou) return;
-      var R = [];
-      [[centro, 0, 0], [d.querySelector('.q-e'), 2, .45], [d.querySelector('.q-d'), 4, .45]].forEach(function (q) {
-        if (!q[0] || !q[0].offsetParent) return;
-        try { var r = window.Retrato(q[0].querySelector('canvas'), imgs, { desloc: q[1], atraso: q[2] }); if (r) { R.push(r); q[0].classList.add('gl'); } } catch (e) {}
-      });
-      if (!R.length) { iniciaVideo(); return; }
+      if (falhou || faltam) return;
+      var fd = celular ? [.9, 1] : lay === 'baixa' ? [.5, .9] : [.66, 1];
+      try { G = window.galeria(cv, { imgs: imgs, quadros: window.GALERIA[lay].map(function (q) { return Object.assign({}, q); }), fundo: fd, parede: parede,
+        orn: orn ? Object.assign({ img: orn }, window.GALERIA.orn[lay]) : null }); } catch (e) { G = null; }
+      if (!G) { falhou = true; if (!celular) iniciaVideo(); else estatico(); return; }
+      cena.classList.add('gl');
       var t0 = 0, vis = true, raf = 0, pausa = 0, tp = 0;
       function quadro(ts) {
         if (!t0) t0 = ts;
         if (pausa) { t0 += ts - pausa; pausa = 0; }
-        var t = (ts - t0) / 1000; R.forEach(function (r) { r.desenha(t, devicePixelRatio || 1); });
-        tp = ts; raf = vis ? requestAnimationFrame(quadro) : 0;
+        G.desenha((ts - t0) / 1000, devicePixelRatio || 1);
+        tp = ts;
+        raf = vis ? requestAnimationFrame(quadro) : 0;
       }
       new IntersectionObserver(function (es) {
         vis = es[0].isIntersecting;
         if (!vis) pausa = tp;
         if (vis && !raf) raf = requestAnimationFrame(quadro);
-      }).observe(hero);
+      }).observe(cena);
       raf = requestAnimationFrame(quadro);
     }
+    faltam++;
+    if (parede.complete && parede.naturalWidth) faltam--; else { parede.addEventListener('load', function () { faltam--; pronto(); }); parede.addEventListener('error', function () { parede = null; faltam--; pronto(); }); }
+    faltam++;
+    function ornOk() { faltam--; pronto(); }
+    if (orn.complete && orn.naturalWidth) faltam--; else { orn.addEventListener('load', ornOk); orn.addEventListener('error', function () { orn = null; ornOk(); }); }
+    Object.keys(nomes).forEach(function (n) {
+      faltam++;
+      var im = new Image(); im.decoding = 'async'; im.src = 'img/galeria/' + n + '.webp' + V; imgs[n] = im;
+      im.onload = function () { faltam--; pronto(); };
+      im.onerror = function () { if (!falhou) { falhou = true; if (!celular) iniciaVideo(); else estatico(); } };
+    });
     return true;
   }
   var videoTentado = false;
   function iniciaVideo() {
     if (videoTentado) return; videoTentado = true;
-    centro.classList.add('vd-modo');
-    var v = centro.querySelector('.t-video');
-    v.src = 'img/hero/retrato.mp4' + V; v.preload = 'auto';
+    var v = d.querySelector('.g-video');
+    v.src = 'img/galeria/galeria.mp4' + V; v.preload = 'auto';
     var p = v.play();
-    if (p && p.catch) p.catch(function () { estatico(); });
-    v.addEventListener('playing', function () { centro.classList.add('vd'); }, { once: true });
-    v.addEventListener('error', estatico);
-    d.addEventListener('visibilitychange', function () { if (!d.hidden && centro.classList.contains('vd')) v.play().catch(function () {}); });
+    if (p && p.catch) p.catch(function () { if (!cena.classList.contains('gl') && !iniciaGL(true)) estatico(); });
+    v.addEventListener('playing', function () { cena.classList.add('vd'); }, { once: true });
+    v.addEventListener('ended', function () { v.currentTime = INTRO; v.play().catch(function () {}); });
+    v.addEventListener('error', function () { if (!iniciaGL(true)) estatico(); });
+    d.addEventListener('visibilitychange', function () { if (!d.hidden && cena.classList.contains('vd')) v.play().catch(function () {}); });
   }
   if (hero) {
     if (reduz) estatico();
     else if (celPe()) iniciaVideo();
-    else if (!iniciaGL()) iniciaVideo();
+    else if (!iniciaGL(false)) iniciaVideo();
     requestAnimationFrame(function () { hero.classList.add('pronto'); });
   }
 
